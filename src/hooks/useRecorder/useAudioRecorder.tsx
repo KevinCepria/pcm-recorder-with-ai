@@ -1,97 +1,133 @@
-import { useState, useRef, useCallback } from "react";
-
-import { encodeToMp3, encodeToWav, mergeChunks } from "../../utils/audio";
-import workletURL from './recorder-worklet.ts?url';
+import { useState, useRef, useCallback, useEffect } from "react";
+import { encodeToWav, mergeChunks } from "../../utils/audio";
+import workletURL from "./recorder-worklet.ts?url";
 
 export const useAudioRecorder = () => {
-  const [recording, setRecording] = useState<boolean>(false);
-  const [wavBlob, setWavBlob] = useState<Blob | null>(null);
-  const [mp3Blob, setMp3Blob] = useState<Blob | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [fullWavBlob, setFullWavBlob] = useState<Blob | null>(null);
+  const [partialWavBlob, setPartialWavBlob] = useState<Blob | null>(null);
+  const [fiveSecWavBlob, setFiveSecWavBlob] = useState<Blob | null>(null);
+  const [isPartialActive, setIsPartialActive] = useState(false);
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const recordedChunksRef = useRef<Float32Array[]>([]);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const partialStartIndexRef = useRef(0);
+  const fiveSecTimeoutRef = useRef<number>();
 
-  // Start recording: initialize AudioContext, load the worklet, and capture PCM frames.
-  const startRecording = useCallback(async () => {
+  // Partial recording management
+  const startPartialRecording = useCallback(() => {
+    if (!recording || isPartialActive) return;
+    const stream = mediaStreamRef.current;
+    if (!stream) return;
+
+    // Start visualization recorder
+    mediaRecorderRef.current = new MediaRecorder(stream);
+    mediaRecorderRef.current.start();
+
+    // Mark partial start position
+    partialStartIndexRef.current = recordedChunksRef.current.length;
+    setIsPartialActive(true);
+
+    // Setup automatic 5-second capture
+    fiveSecTimeoutRef.current = setTimeout(() => {
+      const currentChunks = recordedChunksRef.current;
+      const partialChunks = currentChunks.slice(partialStartIndexRef.current);
+
+      let samples = mergeChunks(partialChunks);
+      samples = samples.slice(0, 16000 * 5); // Exactly 5 seconds
+
+      setFiveSecWavBlob(encodeToWav(samples, 16000));
+    }, 5000);
+  }, [recording, isPartialActive]);
+
+  const stopPartialRecording = useCallback(() => {
+    if (!isPartialActive) return;
+
+    // Cleanup visualization recorder
+    mediaRecorderRef.current?.stop();
+    mediaRecorderRef.current = null;
+    setIsPartialActive(false);
+    clearTimeout(fiveSecTimeoutRef.current);
+
+    // Capture partial recording
+    const partialChunks = recordedChunksRef.current.slice(
+      partialStartIndexRef.current
+    );
+    const samples = mergeChunks(partialChunks);
+    setPartialWavBlob(encodeToWav(samples, 16000));
+  }, [isPartialActive]);
+
+  // Full recording management
+  const startFullRecording = useCallback(async () => {
     if (recording) return;
 
-    // Create an AudioContext with a desired sample rate.
     const audioContext = new AudioContext({ sampleRate: 16000 });
     audioContextRef.current = audioContext;
 
-    // Request microphone access.
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     mediaStreamRef.current = stream;
 
-    // Create a MediaRecorder for visualization purposes.
-    const mediaRecorder = new MediaRecorder(stream);
-    mediaRecorderRef.current = mediaRecorder;
-    // Start the MediaRecorder so that its state is "recording".
-    mediaRecorder.start();
-
     const source = audioContext.createMediaStreamSource(stream);
 
-    // Load the worklet module.
     await audioContext.audioWorklet.addModule(workletURL);
 
-    // Create the AudioWorkletNode.
     const workletNode = new AudioWorkletNode(
       audioContext,
       "recorder-processor"
     );
     workletNode.port.onmessage = (event: MessageEvent<Float32Array>) => {
-      // Each message contains a Float32Array of PCM data.
       recordedChunksRef.current.push(new Float32Array(event.data));
     };
     workletNodeRef.current = workletNode;
 
-    // Connect the source to the worklet.
     source.connect(workletNode);
-    // Optionally, if you want to monitor the sound, you could connect to the destination:
-    // workletNode.connect(audioContext.destination);
-
     setRecording(true);
   }, [recording]);
 
-  // Stop recording, stop all tracks, merge PCM frames, encode them to WAV, and return a Blob.
-  const stopRecording = useCallback(() => {
+  const stopFullRecording = useCallback(() => {
     if (!recording) return;
-
-    // Stop the MediaRecorder if it's recording.
-    if (
-      mediaRecorderRef.current &&
-      mediaRecorderRef.current.state === "recording"
-    ) {
-      mediaRecorderRef.current.stop();
-    }
-
-    // Stop the microphone tracks.
-    mediaStreamRef.current
-      ?.getTracks()
-      .forEach((track: MediaStreamTrack) => track.stop());
-
-    // Disconnect nodes.
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
     workletNodeRef.current?.disconnect();
     audioContextRef.current?.close();
-
     setRecording(false);
 
-    // Merge all recorded Float32Array chunks into one.
-    const mergedSamples = mergeChunks(recordedChunksRef.current);
+    const merged = mergeChunks(recordedChunksRef.current);
+    setFullWavBlob(encodeToWav(merged, 16000));
 
-    // Encode PCM samples to a WAV buffer.
-    const wavBlob = encodeToWav(mergedSamples, 16000);
-    const mp3Blob = encodeToMp3(mergedSamples, 16000);
+    if (mediaRecorderRef.current?.state === "recording") {
+      stopPartialRecording();
+    }
 
-    setMp3Blob(mp3Blob);
-    setWavBlob(wavBlob);
-
-    // Clear the recorded chunks.
     recordedChunksRef.current = [];
-  }, [recording]);
+  }, [recording, stopPartialRecording]);
 
-  return { recording, startRecording, stopRecording, wavBlob, mp3Blob, mediaRecorder: mediaRecorderRef.current };
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      clearTimeout(fiveSecTimeoutRef.current);
+    };
+  }, []);
+
+  return {
+    // Full recording controls
+    recording,
+    startFullRecording,
+    stopFullRecording,
+    fullWavBlob,
+
+    // Partial recording controls
+    isPartialActive,
+    startPartialRecording,
+    stopPartialRecording,
+    partialWavBlob,
+
+    // Automatic 5-second capture
+    fiveSecWavBlob,
+
+    // Visualization access
+    mediaRecorder: mediaRecorderRef.current,
+  };
 };
