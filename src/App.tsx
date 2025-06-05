@@ -24,8 +24,8 @@ function App() {
       </button>
       {recording && (
         <button
-          onClick={
-            isPartialActive ? stopPartialRecording : startPartialRecording
+          onClick={() =>
+            isPartialActive ? stopPartialRecording() : startPartialRecording()
           }
         >
           {isPartialActive ? "Stop Partial Recording" : "Start Partial Recording"}
