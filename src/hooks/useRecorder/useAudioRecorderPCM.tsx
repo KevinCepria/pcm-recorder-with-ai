@@ -1,6 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { encodeToWav, mergeChunks, downsample } from "../../utils/audio";
-import * as ort from "onnxruntime-web";
 
 const workletURL = "/worklets/pcm-worklet.js";
 
@@ -18,19 +17,16 @@ export const useAudioRecorder = () => {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const partialStartIndexRef = useRef(0);
   const fiveSecTimeoutRef = useRef<number>();
-  const ortSessionRef = useRef<ort.InferenceSession | null>(null);
+  const workerRef = useRef<Worker | null>(null);
 
-  // Partial recording management
   const startPartialRecording = useCallback(() => {
     if (!recording || isPartialActive) return;
     const stream = mediaStreamRef.current;
     if (!stream) return;
 
-    // Start visualization recorder
     mediaRecorderRef.current = new MediaRecorder(stream);
     mediaRecorderRef.current.start();
 
-    // Mark partial start position
     partialStartIndexRef.current = recordedChunksRef.current.length;
     setIsPartialActive(true);
 
@@ -57,19 +53,16 @@ export const useAudioRecorder = () => {
       mediaRecorderRef.current &&
       mediaRecorderRef.current.state !== "inactive"
     ) {
-      mediaRecorderRef.current?.stop();
+      mediaRecorderRef.current.stop();
     }
 
     mediaRecorderRef.current = null;
-
     setIsPartialActive(false);
     clearTimeout(fiveSecTimeoutRef.current);
 
-    // Capture partial recording
     const partialChunks = recordedChunksRef.current.slice(
       partialStartIndexRef.current
     );
-
     const samples = mergeChunks(partialChunks);
     const downsampled = downsample(samples);
 
@@ -84,24 +77,6 @@ export const useAudioRecorder = () => {
     }
 
     try {
-      // Load the ONNX model
-      const session = await ort.InferenceSession.create(
-        "/models/denoiser_model.onnx",
-        { executionProviders: ["wasm"] }
-      );
-      ortSessionRef.current = session;
-
-      // Initialize tensors
-      let stateTensor = new ort.Tensor("float32", new Float32Array(45304), [
-        45304,
-      ]);
-      const attenLimDbTensor = new ort.Tensor(
-        "float32",
-        new Float32Array([0.0]),
-        [1]
-      );
-
-      // Set up audio context
       const audioContext = new AudioContext({ sampleRate: 48000 });
       audioContextRef.current = audioContext;
 
@@ -109,78 +84,89 @@ export const useAudioRecorder = () => {
       mediaStreamRef.current = stream;
 
       const source = audioContext.createMediaStreamSource(stream);
-
       await audioContext.audioWorklet.addModule(workletURL);
 
       const workletNode = new AudioWorkletNode(audioContext, "pcm-processor");
-      workletNode.port.onmessage = async (
-        event: MessageEvent<Float32Array>
-      ) => {
+      workletNode.port.onmessage = (event) => {
         const rawPcm = event.data;
-        if (!ortSessionRef.current) return;
-
-        const inputTensor = new ort.Tensor("float32", rawPcm, [rawPcm.length]);
-
-        try {
-          const output = await ortSessionRef.current.run({
-            input_frame: inputTensor,
-            states: stateTensor,
-            atten_lim_db: attenLimDbTensor,
-          });
-
-          const enhanced = output["enhanced_audio_frame"] as ort.Tensor;
-          const newState = output["new_states"] as ort.TypedTensor<"float32">;
-
-          recordedChunksRef.current.push(enhanced.data as Float32Array);
-          stateTensor = newState;
-        } catch (inferenceError) {
-          console.error("ONNX inference error:", inferenceError);
+        if (workerRef.current) {
+          workerRef.current.postMessage(
+            { type: "process", data: { pcmData: rawPcm } },
+            [rawPcm.buffer]
+          );
         }
       };
 
       workletNodeRef.current = workletNode;
+
+      const modelResponse = await fetch("/models/denoiser_model.onnx");
+      const modelBuffer = await modelResponse.arrayBuffer();
+
+      const worker = new Worker(
+        new URL("/workers/onnxWorker.js", import.meta.url)
+      );
+      workerRef.current = worker;
+
+      worker.postMessage({ type: "init", data: { modelBuffer } });
+
+      worker.onmessage = (event) => {
+        const { type, data, error } = event.data;
+
+        if (type === "init-complete") {
+          console.log("Worker initialized");
+        } else if (type === "init-error") {
+          console.error("Worker initialization error:", error);
+        } else if (type === "processed") {
+          const enhancedData = new Float32Array(data);
+          recordedChunksRef.current.push(enhancedData);
+        } else if (type === "error") {
+          console.error("Worker error:", error);
+        }
+      };
+
       source.connect(workletNode);
       setRecording(true);
     } catch (error) {
       console.error("Error during recording setup:", error);
     }
-  }, [recording]);
+  }, [recording, partialWavBlob]);
 
   const stopFullRecording = useCallback(() => {
     if (!recording) return;
-    if (!recording) return;
 
-    // Stop media tracks
     mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
     mediaStreamRef.current = null;
+
     if (mediaRecorderRef.current?.state === "recording") {
       stopPartialRecording();
     }
 
-    // Disconnect and close audio context
     workletNodeRef.current?.disconnect();
     workletNodeRef.current = null;
 
     audioContextRef.current?.close();
     audioContextRef.current = null;
 
-    // Clear ONNX session
-    ortSessionRef.current = null;
+    if (workerRef.current) {
+      workerRef.current.terminate();
+      workerRef.current = null;
+    }
 
     const merged = mergeChunks(recordedChunksRef.current);
     const downsampled = downsample(merged);
 
     setFullWavBlob(encodeToWav(downsampled));
-    
-    // Reset recorded chunks
-    recordedChunksRef.current = [];
 
+    recordedChunksRef.current = [];
     setRecording(false);
   }, [recording, stopPartialRecording]);
 
   // Cleanup timeouts on unmount
   useEffect(() => {
-    return clearFiveSecondsRecording;
+    return () => {
+      clearFiveSecondsRecording();
+      workerRef.current?.terminate();
+    };
   }, []);
 
   const clearFiveSecondsRecording = () =>
