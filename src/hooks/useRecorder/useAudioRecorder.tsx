@@ -8,7 +8,7 @@ export const useAudioRecorder = () => {
   const [recording, setRecording] = useState(false);
   const [fullWavBlob, setFullWavBlob] = useState<Blob | null>(null);
   const [partialWavBlob, setPartialWavBlob] = useState<Blob | null>(null);
-  const [fiveSecWavBlob, setFiveSecWavBlob] = useState<Blob | null>(null);
+  const [fiveSecWavBlob] = useState<Blob | null>(null);
   const [isPartialActive, setIsPartialActive] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(
     null
@@ -24,7 +24,7 @@ export const useAudioRecorder = () => {
 
   // Partial recording management
   const startPartialRecording = useCallback(
-    (hasIntent: boolean = false) => {
+    () => {
       if (!recording || isPartialActive) return;
 
       // Mark partial start position

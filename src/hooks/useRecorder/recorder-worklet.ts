@@ -23,4 +23,4 @@ class RecorderProcessor extends AudioWorkletProcessor {
   }
 }
 
-registerProcessor("pcm-processor", RecorderProcessor);
+registerProcessor("recorder-processor", RecorderProcessor);

@@ -26,7 +26,7 @@ export const encodeToMp3 = (
   return new Blob(mp3Data, { type: "audio/mp3" });
 };
 
-export const encodeToWav = (samples: Float32Array, sampleRate: number) => {
+export const encodeToWav = (samples: Float32Array, sampleRate: number = 16000) => {
   const numChannels = 1; // mono
   const bytesPerSample = 2;
   const blockAlign = numChannels * bytesPerSample;
@@ -141,7 +141,6 @@ export const encodeToWavBuffer = (
   return { wavBuffer, l16Buffer };
 };
 
-
 export const convertWebmToWav = async (
   webmBlob: Blob,
   numChannels = 1,
@@ -152,9 +151,8 @@ export const convertWebmToWav = async (
 
   // Decode the audio data using AudioContext
   const audioContext = new AudioContext({ sampleRate: targetSampleRate });
-  console.log("SSSSSS");
   const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-  
+
   // Encode the audio buffer into a WAV file
   const { wavBuffer, l16Buffer } = encodeToWavBuffer(
     audioBuffer,
@@ -162,10 +160,48 @@ export const convertWebmToWav = async (
     targetSampleRate
   );
 
-  await audioContext.close()
-  
+  await audioContext.close();
+
   return {
     wavBlob: new Blob([wavBuffer], { type: "audio/wav" }),
     l16Blob: new Blob([l16Buffer], { type: "audio/l16" }),
   };
-}
+};
+
+export const downsample = (
+  buffer: Float32Array,
+  inputSampleRate: number = 48000,
+  outputSampleRate: number = 16000
+) => {
+  if (outputSampleRate >= inputSampleRate) {
+    throw new Error("Output sample rate must be lower than input sample rate.");
+  }
+
+  const sampleRateRatio = inputSampleRate / outputSampleRate;
+  const newLength = Math.floor(buffer.length / sampleRateRatio);
+  const result = new Float32Array(newLength);
+
+  let offsetResult = 0;
+  let offsetBuffer = 0;
+
+  while (offsetResult < result.length) {
+    const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
+    let accum = 0,
+      count = 0;
+
+    for (
+      let i = Math.round(offsetBuffer);
+      i < nextOffsetBuffer && i < buffer.length;
+      i++
+    ) {
+      accum += buffer[i];
+      count++;
+    }
+
+    result[offsetResult] = accum / count;
+    offsetResult++;
+    offsetBuffer = nextOffsetBuffer;
+  }
+
+  return result;
+};
