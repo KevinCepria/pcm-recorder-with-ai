@@ -239,4 +239,9 @@ export const bufferToStream = (
 
   // Start playback
   source.start();
+
+  source.onended = () => {
+    source.disconnect();
+    // Remove any additional references to the source node here
+  };
 };
