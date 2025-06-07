@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { encodeToWav, mergeChunks, downsample } from "../../utils/audio";
+import { encodeToWav, mergeChunks, downsample, bufferToStream } from "../../utils/audio";
 import { useOnnx } from "./useOnnx";
 
 const workletURL = "/worklets/pcm-worklet.js";
@@ -14,12 +14,14 @@ export const useAudioRecorder = () => {
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const recordedChunksRef = useRef<Float32Array[]>([]);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const destinationNodeRef = useRef<MediaStreamAudioDestinationNode | null>(
+    null
+  );
 
   const { workerRef, error, ready, initWorker } = useOnnx(modelUrl);
-  
+
   useEffect(() => {
-    // Initialize the ONNX worker
-    initWorker()
+    initWorker();
   }, [initWorker]);
 
   const startFullRecording = useCallback(async () => {
@@ -43,7 +45,7 @@ export const useAudioRecorder = () => {
       );
       workletNodeRef.current.port.onmessage = (event) => {
         const rawPcm = event.data;
-  
+
         if (workerRef.current) {
           workerRef.current.postMessage(
             { type: "process", data: { pcmData: rawPcm } },
@@ -58,6 +60,11 @@ export const useAudioRecorder = () => {
           const { type, data, error } = event.data;
           if (type === "processed") {
             const enhancedData = new Float32Array(data);
+            bufferToStream(
+              enhancedData,
+              audioContextRef.current!,
+              destinationNodeRef.current!
+            );
             recordedChunksRef.current.push(enhancedData);
           } else if (type === "error") {
             console.error("Worker error:", error);
@@ -65,10 +72,16 @@ export const useAudioRecorder = () => {
         };
       }
 
-      mediaRecorderRef.current = new MediaRecorder(mediaStreamRef.current);
+      // Helps in connecting proccessed audio to the MediaRecorder
+      destinationNodeRef.current =
+        audioContextRef.current.createMediaStreamDestination();
+      source.connect(workletNodeRef.current);
+      mediaRecorderRef.current = new MediaRecorder(
+        destinationNodeRef.current.stream
+      );
+
       mediaRecorderRef.current.start();
 
-      source.connect(workletNodeRef.current);
       setRecording(true);
     } catch (error) {
       console.error("Error during recording setup:", error);

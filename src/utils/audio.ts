@@ -26,7 +26,10 @@ export const encodeToMp3 = (
   return new Blob(mp3Data, { type: "audio/mp3" });
 };
 
-export const encodeToWav = (samples: Float32Array, sampleRate: number = 16000) => {
+export const encodeToWav = (
+  samples: Float32Array,
+  sampleRate: number = 16000
+) => {
   const numChannels = 1; // mono
   const bytesPerSample = 2;
   const blockAlign = numChannels * bytesPerSample;
@@ -204,4 +207,36 @@ export const downsample = (
   }
 
   return result;
+};
+
+// Function to play processed audio from an ArrayBuffer used to pass on the mediaRecorder stream for visualization.
+// Might be heavy not sure will test on an actual app later on
+export const bufferToStream = (
+  buffer: ArrayBuffer,
+  audioContext: AudioContext,
+  mediaStreamDestination: MediaStreamAudioDestinationNode
+) => {
+  if (!audioContext) return;
+  // Convert the ArrayBuffer to a Float32Array
+  const floatData = new Float32Array(buffer);
+
+  // Create an AudioBuffer with 1 channel, matching the length and sample rate
+  const audioBuffer = audioContext.createBuffer(
+    1,
+    floatData.length,
+    audioContext.sampleRate
+  );
+
+  // Copy the float data into the AudioBuffer's channel
+  audioBuffer.copyToChannel(floatData, 0);
+
+  // Create a buffer source node
+  const source = audioContext.createBufferSource();
+  source.buffer = audioBuffer;
+
+  // Connect the source to both the destination and the media stream destination
+  source.connect(mediaStreamDestination);
+
+  // Start playback
+  source.start();
 };
