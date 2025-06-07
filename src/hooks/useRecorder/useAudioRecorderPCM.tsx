@@ -1,5 +1,10 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { encodeToWav, mergeChunks, downsample, bufferToStream } from "../../utils/audio";
+import {
+  encodeToWav,
+  mergeChunks,
+  downsample,
+  bufferToStream,
+} from "../../utils/audio";
 import { useOnnx } from "./useOnnx";
 
 const workletURL = "/worklets/pcm-worklet.js";
@@ -107,6 +112,9 @@ export const useAudioRecorder = () => {
 
     audioContextRef.current?.close();
     audioContextRef.current = null;
+
+    destinationNodeRef.current?.disconnect();
+    destinationNodeRef.current = null;
 
     // Worker cleanup handled by useOnnx
 
