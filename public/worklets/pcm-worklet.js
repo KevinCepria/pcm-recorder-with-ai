@@ -40,14 +40,14 @@ class Float32RingBuffer {
 class PcmProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    // Use a buffer large enough for a few seconds of audio (e.g., 48000*5 = 240,000 samples)
+    // Use a buffer large enough for a few seconds of audio (e.g., 48000*10 = 480,000 samples)
     this.ringBuffer = new Float32RingBuffer(48000 * 10); // keeps 10 seconds of audio data before over writing
   }
 
   process(inputs) {
     const input = inputs[0][0];
     if (!input) return true;
-
+   
     // Push incoming samples to ring buffer
     this.ringBuffer.push(input);
 

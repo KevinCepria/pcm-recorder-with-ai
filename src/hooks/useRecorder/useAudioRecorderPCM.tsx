@@ -1,94 +1,49 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { encodeToWav, mergeChunks, downsample } from "../../utils/audio";
+import { useOnnx } from "./useOnnx";
 
 const workletURL = "/worklets/pcm-worklet.js";
+const modelUrl = "/models/denoiser_model.onnx";
 
 export const useAudioRecorder = () => {
   const [recording, setRecording] = useState(false);
   const [fullWavBlob, setFullWavBlob] = useState<Blob | null>(null);
-  const [partialWavBlob, setPartialWavBlob] = useState<Blob | null>(null);
-  const [fiveSecWavBlob] = useState<Blob | null>(null);
-  const [isPartialActive, setIsPartialActive] = useState(false);
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const recordedChunksRef = useRef<Float32Array[]>([]);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const partialStartIndexRef = useRef(0);
-  const fiveSecTimeoutRef = useRef<number>();
-  const workerRef = useRef<Worker | null>(null);
 
-  const startPartialRecording = useCallback(() => {
-    if (!recording || isPartialActive) return;
-    const stream = mediaStreamRef.current;
-    if (!stream) return;
-
-    mediaRecorderRef.current = new MediaRecorder(stream);
-    mediaRecorderRef.current.start();
-
-    partialStartIndexRef.current = recordedChunksRef.current.length;
-    setIsPartialActive(true);
-
-    // Setup automatic 5-second capture
-    // if (hasIntent) {
-    //   fiveSecTimeoutRef.current = setTimeout(() => {
-    //     const currentChunks = recordedChunksRef.current;
-    //     const partialChunks = currentChunks.slice(
-    //       partialStartIndexRef.current
-    //     );
-
-    //     let samples = mergeChunks(partialChunks);
-    //     samples = samples.slice(0, 16000 * 5); // Exactly 5 seconds
-
-    //     setFiveSecWavBlob(encodeToWav(samples, 16000));
-    //   }, 5000);
-    // }
-  }, [recording, isPartialActive]);
-
-  const stopPartialRecording = useCallback(() => {
-    if (!isPartialActive) return;
-
-    if (
-      mediaRecorderRef.current &&
-      mediaRecorderRef.current.state !== "inactive"
-    ) {
-      mediaRecorderRef.current.stop();
-    }
-
-    mediaRecorderRef.current = null;
-    setIsPartialActive(false);
-    clearTimeout(fiveSecTimeoutRef.current);
-
-    const partialChunks = recordedChunksRef.current.slice(
-      partialStartIndexRef.current
-    );
-    const samples = mergeChunks(partialChunks);
-    const downsampled = downsample(samples);
-
-    setPartialWavBlob(encodeToWav(downsampled));
-  }, [isPartialActive]);
+  const { workerRef, error, ready, initWorker } = useOnnx(modelUrl);
+  
+  useEffect(() => {
+    // Initialize the ONNX worker
+    initWorker()
+  }, [initWorker]);
 
   const startFullRecording = useCallback(async () => {
-    if (recording) return;
-
-    if (partialWavBlob) {
-      setPartialWavBlob(null);
-    }
+    if (recording || !ready) return;
 
     try {
-      const audioContext = new AudioContext({ sampleRate: 48000 });
-      audioContextRef.current = audioContext;
+      audioContextRef.current = new AudioContext({ sampleRate: 48000 });
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaStreamRef.current = stream;
+      mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+      });
 
-      const source = audioContext.createMediaStreamSource(stream);
-      await audioContext.audioWorklet.addModule(workletURL);
+      const source = audioContextRef.current.createMediaStreamSource(
+        mediaStreamRef.current
+      );
+      await audioContextRef.current.audioWorklet.addModule(workletURL);
 
-      const workletNode = new AudioWorkletNode(audioContext, "pcm-processor");
-      workletNode.port.onmessage = (event) => {
+      workletNodeRef.current = new AudioWorkletNode(
+        audioContextRef.current,
+        "pcm-processor"
+      );
+      workletNodeRef.current.port.onmessage = (event) => {
         const rawPcm = event.data;
+  
         if (workerRef.current) {
           workerRef.current.postMessage(
             { type: "process", data: { pcmData: rawPcm } },
@@ -97,39 +52,28 @@ export const useAudioRecorder = () => {
         }
       };
 
-      workletNodeRef.current = workletNode;
+      // Only handle processed data and errors here
+      if (workerRef.current) {
+        workerRef.current.onmessage = (event) => {
+          const { type, data, error } = event.data;
+          if (type === "processed") {
+            const enhancedData = new Float32Array(data);
+            recordedChunksRef.current.push(enhancedData);
+          } else if (type === "error") {
+            console.error("Worker error:", error);
+          }
+        };
+      }
 
-      const modelResponse = await fetch("/models/denoiser_model.onnx");
-      const modelBuffer = await modelResponse.arrayBuffer();
+      mediaRecorderRef.current = new MediaRecorder(mediaStreamRef.current);
+      mediaRecorderRef.current.start();
 
-      const worker = new Worker(
-        new URL("/workers/onnxWorker.js", import.meta.url)
-      );
-      workerRef.current = worker;
-
-      worker.postMessage({ type: "init", data: { modelBuffer } });
-
-      worker.onmessage = (event) => {
-        const { type, data, error } = event.data;
-
-        if (type === "init-complete") {
-          console.log("Worker initialized");
-        } else if (type === "init-error") {
-          console.error("Worker initialization error:", error);
-        } else if (type === "processed") {
-          const enhancedData = new Float32Array(data);
-          recordedChunksRef.current.push(enhancedData);
-        } else if (type === "error") {
-          console.error("Worker error:", error);
-        }
-      };
-
-      source.connect(workletNode);
+      source.connect(workletNodeRef.current);
       setRecording(true);
     } catch (error) {
       console.error("Error during recording setup:", error);
     }
-  }, [recording, partialWavBlob]);
+  }, [recording, ready]);
 
   const stopFullRecording = useCallback(() => {
     if (!recording) return;
@@ -137,8 +81,12 @@ export const useAudioRecorder = () => {
     mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
     mediaStreamRef.current = null;
 
-    if (mediaRecorderRef.current?.state === "recording") {
-      stopPartialRecording();
+    if (
+      mediaRecorderRef.current &&
+      mediaRecorderRef.current.state !== "inactive"
+    ) {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current = null;
     }
 
     workletNodeRef.current?.disconnect();
@@ -147,10 +95,7 @@ export const useAudioRecorder = () => {
     audioContextRef.current?.close();
     audioContextRef.current = null;
 
-    if (workerRef.current) {
-      workerRef.current.terminate();
-      workerRef.current = null;
-    }
+    // Worker cleanup handled by useOnnx
 
     const merged = mergeChunks(recordedChunksRef.current);
     const downsampled = downsample(merged);
@@ -159,18 +104,7 @@ export const useAudioRecorder = () => {
 
     recordedChunksRef.current = [];
     setRecording(false);
-  }, [recording, stopPartialRecording]);
-
-  // Cleanup timeouts on unmount
-  useEffect(() => {
-    return () => {
-      clearFiveSecondsRecording();
-      workerRef.current?.terminate();
-    };
-  }, []);
-
-  const clearFiveSecondsRecording = () =>
-    clearTimeout(fiveSecTimeoutRef.current);
+  }, [recording]);
 
   return {
     // Full recording controls
@@ -178,18 +112,13 @@ export const useAudioRecorder = () => {
     startFullRecording,
     stopFullRecording,
     fullWavBlob,
-
-    // Partial recording controls
-    isPartialActive,
-    startPartialRecording,
-    stopPartialRecording,
-    partialWavBlob,
-
-    // Automatic 5-second capture
-    fiveSecWavBlob,
-    clearFiveSecondsRecording,
+    chunksRef: recordedChunksRef,
 
     // Visualization access
     mediaRecorder: mediaRecorderRef.current,
+
+    // ONNX worker error
+    onnxReady: ready,
+    onnxError: error,
   };
 };

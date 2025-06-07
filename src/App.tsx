@@ -1,4 +1,4 @@
-import { useAudioRecorder } from "./hooks";
+import { useAudioRecorder, useGetPartialRecording } from "./hooks";
 import { AudioVisualizer, LiveAudioVisualizer } from "react-audio-visualize";
 
 import "./App.css";
@@ -8,18 +8,25 @@ function App() {
     recording,
     startFullRecording,
     stopFullRecording,
+    mediaRecorder,
+    fullWavBlob,
+    onnxReady,
+    chunksRef,
+  } = useAudioRecorder();
+
+  const {
+    isPartialActive,
+    partialWavBlob,
     startPartialRecording,
     stopPartialRecording,
-    mediaRecorder,
-    partialWavBlob,
-    fullWavBlob,
-    fiveSecWavBlob,
-    isPartialActive,
-  } = useAudioRecorder();
+  } = useGetPartialRecording(chunksRef);
 
   return (
     <div>
-      <button onClick={recording ? stopFullRecording : startFullRecording}>
+      <button
+        onClick={recording ? stopFullRecording : startFullRecording}
+        disabled={!onnxReady}
+      >
         {recording ? "Stop Recording" : "Start Recording"}
       </button>
       {recording && (
@@ -66,7 +73,7 @@ function App() {
               </div>
             </div>
           )}
-          {fiveSecWavBlob && (
+          {/* {fiveSecWavBlob && (
             <div>
               <h2>Intent recording</h2>
               <AudioVisualizer
@@ -81,7 +88,7 @@ function App() {
                 <audio src={URL.createObjectURL(fiveSecWavBlob)} controls />
               </div>
             </div>
-          )}
+          )} */}
           {/* {mp3Blob && (
             <div>
               <h2>MP3 Audio</h2>
