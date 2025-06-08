@@ -10,7 +10,7 @@ export const useOnnx = (modelUrl: string) => {
     const modelBuffer = await modelResponse.arrayBuffer();
 
     workerRef.current = await new Worker(
-      new URL("/workers/onnxWorker.js", import.meta.url)
+      new URL("/workers/DNF3OnnxWorker.js", import.meta.url)
     );
 
     workerRef.current.postMessage({ type: "init", data: { modelBuffer } });

@@ -1,5 +1,6 @@
-import { useAudioRecorder, useGetPartialRecording } from "./hooks";
+
 import { AudioVisualizer, LiveAudioVisualizer } from "react-audio-visualize";
+import { useAudioRecorderDNF3, useGetPartialRecording } from "./hooks";
 
 import "./App.css";
 
@@ -12,7 +13,7 @@ function App() {
     fullWavBlob,
     onnxReady,
     chunksRef,
-  } = useAudioRecorder();
+  } = useAudioRecorderDNF3();
 
   const {
     isPartialActive,

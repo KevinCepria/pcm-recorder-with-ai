@@ -5,12 +5,12 @@ import {
   downsample,
   bufferToStream,
 } from "../../utils/audio";
-import { useOnnx } from "./useOnnx";
+import { useOnnx } from "./useOnnxDNF3";
 
-const workletURL = "/worklets/pcm-worklet.js";
+const workletURL = "/worklets/dnf3-pcm-worklet.js";
 const modelUrl = "/models/denoiser_model.onnx";
 
-export const useAudioRecorder = () => {
+export const useAudioRecorderDNF3 = () => {
   const [recording, setRecording] = useState(false);
   const [fullWavBlob, setFullWavBlob] = useState<Blob | null>(null);
 
@@ -46,7 +46,7 @@ export const useAudioRecorder = () => {
 
       workletNodeRef.current = new AudioWorkletNode(
         audioContextRef.current,
-        "pcm-processor"
+        "dnf3-pcm-processor"
       );
       workletNodeRef.current.port.onmessage = (event) => {
         const rawPcm = event.data;
@@ -87,6 +87,7 @@ export const useAudioRecorder = () => {
 
       mediaRecorderRef.current.start();
 
+      source.connect(workletNodeRef.current);
       setRecording(true);
     } catch (error) {
       console.error("Error during recording setup:", error);
@@ -115,8 +116,6 @@ export const useAudioRecorder = () => {
 
     destinationNodeRef.current?.disconnect();
     destinationNodeRef.current = null;
-
-    // Worker cleanup handled by useOnnx
 
     const merged = mergeChunks(recordedChunksRef.current);
     const downsampled = downsample(merged);

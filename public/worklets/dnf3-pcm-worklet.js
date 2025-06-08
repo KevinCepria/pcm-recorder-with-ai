@@ -37,7 +37,7 @@ class Float32RingBuffer {
   }
 }
 
-class PcmProcessor extends AudioWorkletProcessor {
+class DNF3PcmProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     // Use a buffer large enough for a few seconds of audio (e.g., 48000*10 = 480,000 samples)
@@ -60,4 +60,4 @@ class PcmProcessor extends AudioWorkletProcessor {
     return true;
   }
 }
-registerProcessor("pcm-processor", PcmProcessor);
+registerProcessor("dnf3-pcm-processor", DNF3PcmProcessor);
