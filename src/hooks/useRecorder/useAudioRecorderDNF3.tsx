@@ -8,7 +8,7 @@ import {
 import { useOnnx } from "./useOnnxDNF3";
 
 const workletURL = "/worklets/dnf3-pcm-worklet.js";
-const modelUrl = "/models/denoiser_model.onnx";
+const modelUrl = "/models/denoiserDNF3.onnx";
 
 export const useAudioRecorderDNF3 = () => {
   const [recording, setRecording] = useState(false);
