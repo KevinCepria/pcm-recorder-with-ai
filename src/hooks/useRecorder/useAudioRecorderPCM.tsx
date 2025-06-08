@@ -3,7 +3,6 @@ import {
   encodeToWav,
   mergeChunks,
   downsample,
-  bufferToStream,
 } from "../../utils/audio";
 import { useOnnx } from "./useOnnx";
 
@@ -18,10 +17,6 @@ export const useAudioRecorder = () => {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const recordedChunksRef = useRef<Float32Array[]>([]);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const destinationNodeRef = useRef<MediaStreamAudioDestinationNode | null>(
-    null
-  );
 
   const { workerRef, error, ready, initWorker } = useOnnx(modelUrl);
 
@@ -65,28 +60,14 @@ export const useAudioRecorder = () => {
           const { type, data, error } = event.data;
           if (type === "processed") {
             const enhancedData = new Float32Array(data);
-            bufferToStream(
-              enhancedData,
-              audioContextRef.current!,
-              destinationNodeRef.current!
-            );
             recordedChunksRef.current.push(enhancedData);
           } else if (type === "error") {
             console.error("Worker error:", error);
           }
         };
       }
-
-      // Helps in connecting proccessed audio to the MediaRecorder
-      destinationNodeRef.current =
-        audioContextRef.current.createMediaStreamDestination();
+      
       source.connect(workletNodeRef.current);
-      mediaRecorderRef.current = new MediaRecorder(
-        destinationNodeRef.current.stream
-      );
-
-      mediaRecorderRef.current.start();
-
       setRecording(true);
     } catch (error) {
       console.error("Error during recording setup:", error);
@@ -99,24 +80,11 @@ export const useAudioRecorder = () => {
     mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
     mediaStreamRef.current = null;
 
-    if (
-      mediaRecorderRef.current &&
-      mediaRecorderRef.current.state !== "inactive"
-    ) {
-      mediaRecorderRef.current.stop();
-      mediaRecorderRef.current = null;
-    }
-
     workletNodeRef.current?.disconnect();
     workletNodeRef.current = null;
 
     audioContextRef.current?.close();
     audioContextRef.current = null;
-
-    destinationNodeRef.current?.disconnect();
-    destinationNodeRef.current = null;
-
-    // Worker cleanup handled by useOnnx
 
     const merged = mergeChunks(recordedChunksRef.current);
     const downsampled = downsample(merged);
@@ -134,9 +102,6 @@ export const useAudioRecorder = () => {
     stopFullRecording,
     fullWavBlob,
     chunksRef: recordedChunksRef,
-
-    // Visualization access
-    mediaRecorder: mediaRecorderRef.current,
 
     // ONNX worker error
     onnxReady: ready,
