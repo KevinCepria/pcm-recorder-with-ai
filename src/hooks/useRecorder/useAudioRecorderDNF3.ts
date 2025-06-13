@@ -2,8 +2,8 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import {
   encodeToWav,
   mergeChunks,
-  downsample,
   bufferToStream,
+  downSampleChunk,
 } from "../../utils/audio";
 import { useOnnx } from "./useOnnxDNF3";
 
@@ -33,6 +33,7 @@ export const useAudioRecorderDNF3 = () => {
     if (recording || !ready) return;
 
     try {
+      //48kHz sample rate audio input needed for DNF3 model
       audioContextRef.current = new AudioContext({ sampleRate: 48000 });
 
       mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({
@@ -52,6 +53,7 @@ export const useAudioRecorderDNF3 = () => {
         const rawPcm = event.data;
 
         if (workerRef.current) {
+          //pass raw PCM data to the ONNX worker for processing
           workerRef.current.postMessage(
             { type: "process", data: { pcmData: rawPcm } },
             [rawPcm.buffer]
@@ -59,18 +61,22 @@ export const useAudioRecorderDNF3 = () => {
         }
       };
 
-      // Only handle processed data and errors here
+      // Handle processed data and errors from the worker
       if (workerRef.current) {
         workerRef.current.onmessage = (event) => {
           const { type, data, error } = event.data;
           if (type === "processed") {
+            // Handle audio data processed by the ONNX model
             const enhancedData = new Float32Array(data);
             bufferToStream(
               enhancedData,
               audioContextRef.current!,
               destinationNodeRef.current!
             );
-            recordedChunksRef.current.push(enhancedData);
+
+            //Down sample rate from 48kHz to 16kHz to save memory
+            const downsampledData = downSampleChunk(enhancedData);
+            recordedChunksRef.current.push(downsampledData);
           } else if (type === "error") {
             console.error("Worker error:", error);
           }
@@ -118,9 +124,8 @@ export const useAudioRecorderDNF3 = () => {
     destinationNodeRef.current = null;
 
     const merged = mergeChunks(recordedChunksRef.current);
-    const downsampled = downsample(merged);
 
-    setFullWavBlob(encodeToWav(downsampled));
+    setFullWavBlob(encodeToWav(merged));
 
     recordedChunksRef.current = [];
     setRecording(false);

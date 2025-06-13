@@ -245,3 +245,33 @@ export const bufferToStream = (
     // Remove any additional references to the source node here
   };
 };
+
+/**
+ * Downsamples a single Float32Array chunk from inputSampleRate to outputSampleRate.
+ * Example: downSampleChunk(chunk, 48000, 16000) // chunk.length = 480 -> returns Float32Array(160)
+ */
+export const downSampleChunk = (
+  chunk: Float32Array,
+  inputSampleRate: number = 48000,
+  outputSampleRate: number = 16000
+) => {
+  if (outputSampleRate >= inputSampleRate) {
+    throw new Error("Output sample rate must be lower than input sample rate.");
+  }
+  const sampleRateRatio = inputSampleRate / outputSampleRate;
+  const newLength = Math.floor(chunk.length / sampleRateRatio);
+  const result = new Float32Array(newLength);
+
+  for (let i = 0; i < newLength; i++) {
+    const start = Math.floor(i * sampleRateRatio);
+    const end = Math.floor((i + 1) * sampleRateRatio);
+    let sum = 0;
+    let count = 0;
+    for (let j = start; j < end && j < chunk.length; j++) {
+      sum += chunk[j];
+      count++;
+    }
+    result[i] = count > 0 ? sum / count : 0;
+  }
+  return result;
+}

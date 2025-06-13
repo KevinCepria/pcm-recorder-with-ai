@@ -1,5 +1,5 @@
 import { useCallback, useState, useRef } from "react";
-import { mergeChunks, downsample, encodeToWav } from "../../utils/audio";
+import { mergeChunks, encodeToWav } from "../../utils/audio";
 
 export const useGetPartialRecording = (
   recordedChunksRef: React.MutableRefObject<Float32Array[]>
@@ -12,20 +12,18 @@ export const useGetPartialRecording = (
   const startPartialRecording = useCallback(() => {
     partialStartIndexRef.current = recordedChunksRef.current.length;
     setIsPartialActive(true);
-  }, [recordedChunksRef]);
+  }, []);
 
   const stopPartialRecording = useCallback(() => {
-    // if (fiveSecTimeoutRef) clearTimeout(fiveSecTimeoutRef.current);
     const partialChunks = recordedChunksRef.current.slice(
       partialStartIndexRef.current
     );
-    const samples = mergeChunks(partialChunks);
-    const downsampled = downsample(samples);
 
-    setPartialWavBlob(encodeToWav(downsampled));
+    const merged = mergeChunks(partialChunks);
+    setPartialWavBlob(encodeToWav(merged));
 
     setIsPartialActive(false);
-  }, [recordedChunksRef]);
+  }, []);
 
   return {
     isPartialActive,
