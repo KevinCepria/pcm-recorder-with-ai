@@ -9,7 +9,6 @@ function App() {
     recording,
     startFullRecording,
     stopFullRecording,
-    mediaRecorder,
     fullWavBlob,
     onnxReady,
     chunksRef,
@@ -109,17 +108,17 @@ function App() {
           )} */}
         </>
       ) : (
-        mediaRecorder && (
+     
           <div>
-            <LiveAudioVisualizer
+            {/* <LiveAudioVisualizer
               mediaRecorder={mediaRecorder as MediaRecorder}
               width={500}
               height={75}
               barWidth={1}
               gap={0}
-            />
+            /> */}
           </div>
-        )
+    
       )}
     </div>
   );

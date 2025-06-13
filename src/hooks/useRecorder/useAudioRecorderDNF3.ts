@@ -1,10 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import {
-  encodeToWav,
-  mergeChunks,
-  bufferToStream,
-  downSampleChunk,
-} from "../../utils/audio";
+import { encodeToWav, mergeChunks, downSampleChunk } from "../../utils/audio";
 import { useOnnx } from "./useOnnxDNF3";
 
 const workletURL = "/worklets/dnf3-pcm-worklet.js";
@@ -18,10 +13,6 @@ export const useAudioRecorderDNF3 = () => {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const recordedChunksRef = useRef<Float32Array[]>([]);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const destinationNodeRef = useRef<MediaStreamAudioDestinationNode | null>(
-    null
-  );
 
   const { workerRef, error, ready, initWorker } = useOnnx(modelUrl);
 
@@ -33,7 +24,7 @@ export const useAudioRecorderDNF3 = () => {
     if (recording || !ready) return;
 
     try {
-      //48kHz sample rate audio input needed for DNF3 model
+      // Use 48kHz sample rate for DeepFilterNet3 model compatibility
       audioContextRef.current = new AudioContext({ sampleRate: 48000 });
 
       mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({
@@ -66,32 +57,14 @@ export const useAudioRecorderDNF3 = () => {
         workerRef.current.onmessage = (event) => {
           const { type, data, error } = event.data;
           if (type === "processed") {
-            // Handle audio data processed by the ONNX model
-            const enhancedData = new Float32Array(data);
-            bufferToStream(
-              enhancedData,
-              audioContextRef.current!,
-              destinationNodeRef.current!
-            );
-
             //Down sample rate from 48kHz to 16kHz to save memory
-            const downsampledData = downSampleChunk(enhancedData);
+            const downsampledData = downSampleChunk(new Float32Array(data));
             recordedChunksRef.current.push(downsampledData);
           } else if (type === "error") {
             console.error("Worker error:", error);
           }
         };
       }
-
-      // Helps in connecting proccessed audio to the MediaRecorder
-      destinationNodeRef.current =
-        audioContextRef.current.createMediaStreamDestination();
-      source.connect(workletNodeRef.current);
-      mediaRecorderRef.current = new MediaRecorder(
-        destinationNodeRef.current.stream
-      );
-
-      mediaRecorderRef.current.start();
 
       source.connect(workletNodeRef.current);
       setRecording(true);
@@ -106,22 +79,11 @@ export const useAudioRecorderDNF3 = () => {
     mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
     mediaStreamRef.current = null;
 
-    if (
-      mediaRecorderRef.current &&
-      mediaRecorderRef.current.state !== "inactive"
-    ) {
-      mediaRecorderRef.current.stop();
-      mediaRecorderRef.current = null;
-    }
-
     workletNodeRef.current?.disconnect();
     workletNodeRef.current = null;
 
     audioContextRef.current?.close();
     audioContextRef.current = null;
-
-    destinationNodeRef.current?.disconnect();
-    destinationNodeRef.current = null;
 
     const merged = mergeChunks(recordedChunksRef.current);
 
@@ -132,17 +94,12 @@ export const useAudioRecorderDNF3 = () => {
   }, [recording]);
 
   return {
-    // Full recording controls
     recording,
     startFullRecording,
     stopFullRecording,
     fullWavBlob,
     chunksRef: recordedChunksRef,
 
-    // Visualization access
-    mediaRecorder: mediaRecorderRef.current,
-
-    // ONNX worker error
     onnxReady: ready,
     onnxError: error,
   };
