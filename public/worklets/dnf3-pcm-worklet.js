@@ -40,8 +40,8 @@ class Float32RingBuffer {
 class DNF3PcmProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    // Use a buffer large enough for a few seconds of audio (e.g., 48000*10 = 480,000 samples)
-    this.ringBuffer = new Float32RingBuffer(48000 * 10); // keeps 10 seconds of audio data before over writing
+    // Use a buffer large enough for about 100ms of audio (4,800 samples)
+    this.ringBuffer = new Float32RingBuffer(4800); // keeps 0.1 seconds of audio data before overwriting
   }
 
   process(inputs) {
