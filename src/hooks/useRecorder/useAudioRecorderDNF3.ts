@@ -2,8 +2,9 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { encodeToWav, mergeChunks, downSampleChunk } from "../../utils/audio";
 import { useOnnx } from "./useOnnxDNF3";
 
-const workletURL = "/worklets/dnf3-pcm-worklet.js";
-const modelUrl = "/models/denoiserDNF3.onnx";
+const WORKLET_URL = "/worklets/dnf3-pcm-worklet.js";
+const MODEL_URL = "/models/denoiserDNF3.onnx";
+const SAMPLE_RATE = 48000; // Use 48kHz sample rate for DNF3 model compatibility
 
 export const useAudioRecorderDNF3 = () => {
   const [recording, setRecording] = useState(false);
@@ -14,7 +15,7 @@ export const useAudioRecorderDNF3 = () => {
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const recordedChunksRef = useRef<Float32Array[]>([]);
 
-  const { workerRef, error, ready, initWorker } = useOnnx(modelUrl);
+  const { workerRef, error, ready, initWorker } = useOnnx(MODEL_URL);
 
   useEffect(() => {
     initWorker();
@@ -24,8 +25,7 @@ export const useAudioRecorderDNF3 = () => {
     if (recording || !ready) return;
 
     try {
-      // Use 48kHz sample rate for DeepFilterNet3 model compatibility
-      audioContextRef.current = new AudioContext({ sampleRate: 48000 });
+      audioContextRef.current = new AudioContext({ sampleRate: SAMPLE_RATE });
 
       mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({
         audio: true,
@@ -34,7 +34,7 @@ export const useAudioRecorderDNF3 = () => {
       const source = audioContextRef.current.createMediaStreamSource(
         mediaStreamRef.current
       );
-      await audioContextRef.current.audioWorklet.addModule(workletURL);
+      await audioContextRef.current.audioWorklet.addModule(WORKLET_URL);
 
       workletNodeRef.current = new AudioWorkletNode(
         audioContextRef.current,
