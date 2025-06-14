@@ -98,7 +98,7 @@ export const useAudioRecorderDNF3 = () => {
     startFullRecording,
     stopFullRecording,
     fullWavBlob,
-    chunksRef: recordedChunksRef,
+    recordedChunks: recordedChunksRef.current,
 
     onnxReady: ready,
     onnxError: error,

@@ -1,5 +1,5 @@
-
-import { AudioVisualizer, LiveAudioVisualizer } from "react-audio-visualize";
+import { AudioVisualizer } from "react-audio-visualize";
+import { AudioVisualizer as LiveAudioVisualizer } from "./components/AudioVisualizer";
 import { useAudioRecorderDNF3, useGetPartialRecording } from "./hooks";
 
 import "./App.css";
@@ -11,7 +11,7 @@ function App() {
     stopFullRecording,
     fullWavBlob,
     onnxReady,
-    chunksRef,
+    recordedChunks,
   } = useAudioRecorderDNF3();
 
   const {
@@ -19,7 +19,7 @@ function App() {
     partialWavBlob,
     startPartialRecording,
     stopPartialRecording,
-  } = useGetPartialRecording(chunksRef);
+  } = useGetPartialRecording(recordedChunks);
 
   return (
     <div>
@@ -35,7 +35,9 @@ function App() {
             isPartialActive ? stopPartialRecording() : startPartialRecording()
           }
         >
-          {isPartialActive ? "Stop Partial Recording" : "Start Partial Recording"}
+          {isPartialActive
+            ? "Stop Partial Recording"
+            : "Start Partial Recording"}
         </button>
       )}
 
@@ -108,17 +110,13 @@ function App() {
           )} */}
         </>
       ) : (
-     
-          <div>
-            {/* <LiveAudioVisualizer
-              mediaRecorder={mediaRecorder as MediaRecorder}
-              width={500}
-              height={75}
-              barWidth={1}
-              gap={0}
-            /> */}
-          </div>
-    
+        <div>
+          <LiveAudioVisualizer
+            pcmChunks={recordedChunks}
+            width={500}
+            height={75}
+          />
+        </div>
       )}
     </div>
   );
