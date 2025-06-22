@@ -1,6 +1,6 @@
 import { AudioVisualizer } from "react-audio-visualize";
 import { AudioVisualizer as LiveAudioVisualizer } from "./components/AudioVisualizer";
-import { useAudioRecorderDNF3, useGetPartialRecording } from "./hooks";
+import { useAudioRecorder, useGetPartialRecording } from "./hooks";
 
 import "./App.css";
 
@@ -12,7 +12,8 @@ function App() {
     fullWavBlob,
     onnxReady,
     recordedChunks,
-  } = useAudioRecorderDNF3();
+    isSpeaking
+  } = useAudioRecorder();
 
   const {
     isPartialActive,
@@ -21,8 +22,11 @@ function App() {
     stopPartialRecording,
   } = useGetPartialRecording(recordedChunks);
 
+
+
   return (
     <div>
+      Speaking: {isSpeaking ? "Yes" : "No"} <br />
       <button
         onClick={recording ? stopFullRecording : startFullRecording}
         disabled={!onnxReady}

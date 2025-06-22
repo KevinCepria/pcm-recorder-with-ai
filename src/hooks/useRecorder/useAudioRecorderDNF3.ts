@@ -1,24 +1,28 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { encodeToWav, mergeChunks, downSampleChunk } from "../../utils/audio";
-import { useOnnx } from "./useOnnxDNF3";
+import { encodeToWav, mergeChunks } from "../../utils/audio";
+import { useOnnx } from "./useOnnx";
 
 const WORKLET_URL = "/worklets/dnf3-pcm-worklet.js";
-const MODEL_URL = "/models/denoiserDNF3.onnx";
 const SAMPLE_RATE = 48000; // Use 48kHz sample rate for DNF3 model compatibility
 
-export const useAudioRecorderDNF3 = () => {
+export const useAudioRecorder = () => {
   const [recording, setRecording] = useState(false);
   const [fullWavBlob, setFullWavBlob] = useState<Blob | null>(null);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [error, setError] = useState("");
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const recordedChunksRef = useRef<Float32Array[]>([]);
 
-  const { workerRef, error, ready, initWorker } = useOnnx(MODEL_URL);
+  const { workerRef, error: onnxError, ready, initWorker } = useOnnx();
 
   useEffect(() => {
     initWorker();
+    return () => {
+      cleanup();
+    };
   }, [initWorker]);
 
   const startFullRecording = useCallback(async () => {
@@ -56,10 +60,11 @@ export const useAudioRecorderDNF3 = () => {
       if (workerRef.current) {
         workerRef.current.onmessage = (event) => {
           const { type, data, error } = event.data;
-          if (type === "processed") {
-            //Down sample rate from 48kHz to 16kHz to save memory
-            const downsampledData = downSampleChunk(new Float32Array(data));
-            recordedChunksRef.current.push(downsampledData);
+  
+          if (type === "dnf3-processed") {
+            recordedChunksRef.current.push(new Float32Array(data));
+          } else if (type === "silero-processed") {
+            setIsSpeaking(data);
           } else if (type === "error") {
             console.error("Worker error:", error);
           }
@@ -69,6 +74,17 @@ export const useAudioRecorderDNF3 = () => {
       source.connect(workletNodeRef.current);
       setRecording(true);
     } catch (error) {
+      setRecording(false);
+      if (error instanceof Error) {
+        setError(
+          error.message ??
+            "An error occurred while setting up the audio recording."
+        );
+      } else {
+        setError(
+          "An unknown error occurred while setting up the audio recording."
+        );
+      }
       console.error("Error during recording setup:", error);
     }
   }, [recording, ready]);
@@ -76,6 +92,15 @@ export const useAudioRecorderDNF3 = () => {
   const stopFullRecording = useCallback(() => {
     if (!recording) return;
 
+    const merged = mergeChunks(recordedChunksRef.current);
+    setFullWavBlob(encodeToWav(merged));
+
+    cleanup();
+    setRecording(false);
+    setIsSpeaking(false);
+  }, [recording]);
+
+  const cleanup = useCallback(() => {
     mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
     mediaStreamRef.current = null;
 
@@ -85,13 +110,8 @@ export const useAudioRecorderDNF3 = () => {
     audioContextRef.current?.close();
     audioContextRef.current = null;
 
-    const merged = mergeChunks(recordedChunksRef.current);
-
-    setFullWavBlob(encodeToWav(merged));
-
     recordedChunksRef.current = [];
-    setRecording(false);
-  }, [recording]);
+  }, []);
 
   return {
     recording,
@@ -99,8 +119,9 @@ export const useAudioRecorderDNF3 = () => {
     stopFullRecording,
     fullWavBlob,
     recordedChunks: recordedChunksRef.current,
+    isSpeaking,
 
     onnxReady: ready,
-    onnxError: error,
+    onnxError: error ?? onnxError,
   };
 };

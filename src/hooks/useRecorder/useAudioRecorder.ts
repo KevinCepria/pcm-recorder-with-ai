@@ -4,7 +4,7 @@ import { convertWebmToWav } from "../../utils/audio";
 import { NoiseSuppressorWorklet_Name } from "@timephy/rnnoise-wasm";
 import NoiseSuppressorWorklet from "@timephy/rnnoise-wasm/NoiseSuppressorWorklet?worker&url";
 
-export const useAudioRecorder = () => {
+export const useAudioRecorderRNNoise = () => {
   const [recording, setRecording] = useState(false);
   const [fullWavBlob, setFullWavBlob] = useState<Blob | null>(null);
   const [partialWavBlob, setPartialWavBlob] = useState<Blob | null>(null);
