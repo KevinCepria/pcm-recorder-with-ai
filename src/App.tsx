@@ -26,7 +26,7 @@ function App() {
 
   return (
     <div>
-      Speaking: {isSpeaking ? "Yes" : "No"} <br />
+      <h1>Speaking: {isSpeaking ? "Yes" : "No"} </h1>
       <button
         onClick={recording ? stopFullRecording : startFullRecording}
         disabled={!onnxReady}
