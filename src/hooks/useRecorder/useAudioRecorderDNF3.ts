@@ -16,7 +16,7 @@ export const useAudioRecorder = () => {
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const recordedChunksRef = useRef<Float32Array[]>([]);
 
-  const { workerRef, error: onnxError, ready, initWorker } = useOnnx();
+  const { workerRef, error: onnxError, ready, initWorker, reset } = useOnnx();
 
   useEffect(() => {
     initWorker();
@@ -60,7 +60,7 @@ export const useAudioRecorder = () => {
       if (workerRef.current) {
         workerRef.current.onmessage = (event) => {
           const { type, data, error } = event.data;
-  
+
           if (type === "dnf3-processed") {
             recordedChunksRef.current.push(new Float32Array(data));
           } else if (type === "silero-processed") {
@@ -96,6 +96,8 @@ export const useAudioRecorder = () => {
     setFullWavBlob(encodeToWav(merged));
 
     cleanup();
+    reset();
+
     setRecording(false);
     setIsSpeaking(false);
   }, [recording]);
