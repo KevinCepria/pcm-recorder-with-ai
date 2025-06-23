@@ -1,4 +1,4 @@
-import { useCallback, useState, useRef } from "react";
+import { useState, useRef } from "react";
 import { mergeChunks, encodeToWav } from "../../utils/audio";
 
 export const useGetPartialRecording = (recordedChunks: Float32Array[] = []) => {
@@ -7,19 +7,19 @@ export const useGetPartialRecording = (recordedChunks: Float32Array[] = []) => {
 
   const partialStartIndexRef = useRef<number>(0);
 
-  const startPartialRecording = useCallback(() => {
+  const startPartialRecording = () => {
     partialStartIndexRef.current = recordedChunks.length;
     setIsPartialActive(true);
-  }, []);
+  };
 
-  const stopPartialRecording = useCallback(() => {
+  const stopPartialRecording = () => {
     const partialChunks = recordedChunks.slice(partialStartIndexRef.current);
 
     const merged = mergeChunks(partialChunks);
     setPartialWavBlob(encodeToWav(merged));
 
     setIsPartialActive(false);
-  }, []);
+  };
 
   return {
     isPartialActive,
