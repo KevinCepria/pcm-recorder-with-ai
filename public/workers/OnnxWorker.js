@@ -13,7 +13,7 @@ let sileroSession = null;
 const MIN_SPEECH_FRAMES = 0; // Minimum number of frames to consider speech default is 3
 const POSITIVE_SPEECH_THRESHOLD = 0.5; // Threshold for positive speech detection
 const REDEMPTION_FRAMES = 3; // Number of speech-negative frames to wait before ending a speech segment. default is 5
-const INPUT_SAMPLE = 512; // Input sample size for Silero model
+const INPUT_SAMPLE = 1536; // Input sample size for Silero model
 
 let h = null;
 let c = null;
