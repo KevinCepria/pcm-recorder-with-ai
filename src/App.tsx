@@ -3,6 +3,7 @@ import { AudioVisualizer as LiveAudioVisualizer } from "./components/AudioVisual
 import { useAudioRecorder, useGetPartialRecording } from "./hooks";
 
 import "./App.css";
+import { useEffect } from "react";
 
 function App() {
   const {
@@ -12,8 +13,10 @@ function App() {
     fullWavBlob,
     onnxReady,
     recordedChunks,
-    isSpeaking
-  } = useAudioRecorder();
+    startVAD,
+    stopVAD,
+    isSpeaking,
+  } = useAudioRecorder(true);
 
   const {
     isPartialActive,
@@ -22,7 +25,13 @@ function App() {
     stopPartialRecording,
   } = useGetPartialRecording(recordedChunks);
 
-
+  useEffect(() => {
+    if (isPartialActive) {
+      startVAD();
+    } else {
+      stopVAD();
+    }
+  }, [isPartialActive]);
 
   return (
     <div>

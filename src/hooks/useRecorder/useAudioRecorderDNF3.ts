@@ -3,69 +3,101 @@ import { encodeToWav, mergeChunks } from "../../utils/audio";
 import { useOnnx } from "./useOnnx";
 
 const WORKLET_URL = "/worklets/dnf3-pcm-worklet.js";
-const SAMPLE_RATE = 48000; // Use 48kHz sample rate for DNF3 model compatibility
+const SAMPLE_RATE = 48000;
 
-export const useAudioRecorder = () => {
+export const useAudioRecorder = (defaultVADActive = false) => {
+  // --- State ---
   const [recording, setRecording] = useState(false);
   const [fullWavBlob, setFullWavBlob] = useState<Blob | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [error, setError] = useState("");
 
+  // --- Refs ---
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const recordedChunksRef = useRef<Float32Array[]>([]);
+  const isVadActiveRef = useRef(defaultVADActive);
 
-  const { workerRef, error: onnxError, ready, initWorker, reset } = useOnnx();
+  // --- ONNX Worker ---
+  const {
+    workerRef,
+    error: onnxError,
+    ready,
+    initWorker,
+    resetSileroStates,
+    resetDNF3States,
+  } = useOnnx();
 
+  // --- Init & Cleanup ---
   useEffect(() => {
     initWorker();
-    return () => {
-      cleanup();
-    };
+    return cleanup;
   }, [initWorker]);
 
+  // --- VAD Controls ---
+  const startVAD = useCallback(() => {
+    if (recording && !defaultVADActive) isVadActiveRef.current = true;
+  }, [recording]);
+
+  const stopVAD = useCallback(() => {
+    if (recording && !defaultVADActive) {
+      isVadActiveRef.current = false;
+      setIsSpeaking(false);
+      resetSileroStates();
+    }
+  }, [recording, resetSileroStates]);
+
+  // --- Start Recording ---
   const startFullRecording = useCallback(async () => {
     if (recording || !ready) return;
 
     try {
+      // Setup audio context and stream
       audioContextRef.current = new AudioContext({ sampleRate: SAMPLE_RATE });
-
       mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({
         audio: true,
       });
-
       const source = audioContextRef.current.createMediaStreamSource(
         mediaStreamRef.current
       );
-      await audioContextRef.current.audioWorklet.addModule(WORKLET_URL);
 
+      // Setup worklet
+      await audioContextRef.current.audioWorklet.addModule(WORKLET_URL);
       workletNodeRef.current = new AudioWorkletNode(
         audioContextRef.current,
         "dnf3-pcm-processor"
       );
+
+      // PCM to worker
       workletNodeRef.current.port.onmessage = (event) => {
         const rawPcm = event.data;
-
         if (workerRef.current) {
-          //pass raw PCM data to the ONNX worker for processing
           workerRef.current.postMessage(
-            { type: "process", data: { pcmData: rawPcm } },
+            {
+              type: "process",
+              data: { pcmData: rawPcm, isVadActive: isVadActiveRef.current },
+            },
             [rawPcm.buffer]
           );
         }
       };
 
-      // Handle processed data and errors from the worker
+      // Worker handler
       if (workerRef.current) {
         workerRef.current.onmessage = (event) => {
           const { type, data, error } = event.data;
-
           if (type === "dnf3-processed") {
             recordedChunksRef.current.push(new Float32Array(data));
-          } else if (type === "silero-processed") {
-            setIsSpeaking(data);
-          } else if (type === "error") {
+          }
+          if (type === "silero-processed" && isVadActiveRef.current) {
+            setIsSpeaking((prev) => {
+              if (prev && !data) console.log("Speech ended");
+              if (!prev && data) console.log("Speech started");
+              return data;
+            });
+          }
+          if (type === "error") {
             console.error("Worker error:", error);
           }
         };
@@ -73,11 +105,10 @@ export const useAudioRecorder = () => {
 
       source.connect(workletNodeRef.current);
       setRecording(true);
-    } catch (error) {
-      setRecording(false);
-      if (error instanceof Error) {
+    } catch (err) {
+      if (err instanceof Error) {
         setError(
-          error.message ??
+          err.message ??
             "An error occurred while setting up the audio recording."
         );
       } else {
@@ -85,23 +116,19 @@ export const useAudioRecorder = () => {
           "An unknown error occurred while setting up the audio recording."
         );
       }
-      console.error("Error during recording setup:", error);
+      console.error("Error during recording setup:", err);
     }
-  }, [recording, ready]);
+  }, [recording, ready, resetSileroStates, workerRef]);
 
+  // --- Stop Recording ---
   const stopFullRecording = useCallback(() => {
     if (!recording) return;
-
     const merged = mergeChunks(recordedChunksRef.current);
     setFullWavBlob(encodeToWav(merged));
-
     cleanup();
-    reset();
-
-    setRecording(false);
-    setIsSpeaking(false);
   }, [recording]);
 
+  // --- Cleanup ---
   const cleanup = useCallback(() => {
     mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
     mediaStreamRef.current = null;
@@ -112,8 +139,18 @@ export const useAudioRecorder = () => {
     audioContextRef.current?.close();
     audioContextRef.current = null;
 
+    if (!defaultVADActive) {
+      isVadActiveRef.current = false;
+    }
+
     recordedChunksRef.current = [];
-  }, []);
+
+    resetDNF3States();
+    resetSileroStates();
+
+    setRecording(false);
+    setIsSpeaking(false);
+  }, [resetDNF3States, resetSileroStates]);
 
   return {
     recording,
@@ -122,8 +159,9 @@ export const useAudioRecorder = () => {
     fullWavBlob,
     recordedChunks: recordedChunksRef.current,
     isSpeaking,
-
+    startVAD,
+    stopVAD,
     onnxReady: ready,
-    onnxError: error ?? onnxError,
+    onnxError: error || onnxError,
   };
 };

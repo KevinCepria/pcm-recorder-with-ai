@@ -31,9 +31,15 @@ export const useOnnx = () => {
     };
   }, []);
 
-  const reset = useCallback(() => {
+  const resetDNF3States = useCallback(() => {
     if (workerRef.current) {
-      workerRef.current.postMessage({ type: "reset" });
+      workerRef.current.postMessage({ type: "reset-dnf3" });
+    }
+  }, []);
+
+  const resetSileroStates = useCallback(() => {
+    if (workerRef.current) {
+      workerRef.current.postMessage({ type: "reset-silero" });
     }
   }, []);
 
@@ -44,5 +50,12 @@ export const useOnnx = () => {
     };
   }, []);
 
-  return { workerRef, ready, error, initWorker, reset };
+  return {
+    workerRef,
+    ready,
+    error,
+    initWorker,
+    resetDNF3States,
+    resetSileroStates,
+  };
 };

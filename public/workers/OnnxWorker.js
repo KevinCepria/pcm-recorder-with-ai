@@ -113,7 +113,7 @@ self.onmessage = async (event) => {
         );
 
         //Silero processing
-
+        if (!data.isVadActive) return; // If VAD is not active, skip Silero processing
         sileroSamples.push(...copyDownsampledData); //until we have enough samples to process
 
         if (sileroSamples.length >= INPUT_SAMPLE) {
@@ -158,12 +158,15 @@ self.onmessage = async (event) => {
       }
       break;
 
-    case "reset":
+    case "reset-dnf3":
       // Reset DNF3 session state
       attenLimDbTensor = new ort.Tensor("float32", new Float32Array([0.0]), [
         1,
       ]);
 
+      break;
+
+    case "reset-silero":
       // Reset the state tensors for Silero
       h = new ort.Tensor("float32", zeroes, [2, 1, 64]);
       c = new ort.Tensor("float32", zeroes, [2, 1, 64]);
