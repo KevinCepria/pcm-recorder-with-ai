@@ -4,8 +4,23 @@ import { useOnnx } from "./useOnnx";
 
 const WORKLET_URL = "/worklets/dnf3-pcm-worklet.js";
 const SAMPLE_RATE = 48000;
+interface AudioRecorderOptions {
+  defaultVADActive?: boolean;
+  onSpeechStart?: () => void;
+  onSpeechEnd?: () => void;
+}
 
-export const useAudioRecorder = (defaultVADActive = false) => {
+// --- Default Options ---
+const defaultOptions: AudioRecorderOptions = {
+  defaultVADActive: false,
+  onSpeechStart: undefined,
+  onSpeechEnd: undefined,
+};
+
+export const useAudioRecorder = (props: Partial<AudioRecorderOptions>) => {
+  const options = { ...defaultOptions, ...props };
+  const { defaultVADActive, onSpeechStart, onSpeechEnd } = options;
+
   // --- State ---
   const [recording, setRecording] = useState(false);
   const [fullWavBlob, setFullWavBlob] = useState<Blob | null>(null);
@@ -92,8 +107,12 @@ export const useAudioRecorder = (defaultVADActive = false) => {
           }
           if (type === "silero-processed" && isVadActiveRef.current) {
             setIsSpeaking((prev) => {
-              if (prev && !data) console.log("Speech ended");
-              if (!prev && data) console.log("Speech started");
+              if (prev && !data) {
+                onSpeechEnd?.();
+              }
+              if (!prev && data) {
+                onSpeechStart?.();
+              }
               return data;
             });
           }
@@ -161,7 +180,7 @@ export const useAudioRecorder = (defaultVADActive = false) => {
     isSpeaking,
     startVAD,
     stopVAD,
-    onnxReady: ready,
-    onnxError: error || onnxError,
+    ready,
+    error: error || onnxError,
   };
 };

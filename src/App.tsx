@@ -3,7 +3,6 @@ import { AudioVisualizer as LiveAudioVisualizer } from "./components/AudioVisual
 import { useAudioRecorder, useGetPartialRecording } from "./hooks";
 
 import "./App.css";
-import { useEffect } from "react";
 
 function App() {
   const {
@@ -11,34 +10,44 @@ function App() {
     startFullRecording,
     stopFullRecording,
     fullWavBlob,
-    onnxReady,
+    ready,
     recordedChunks,
     startVAD,
     stopVAD,
     isSpeaking,
-  } = useAudioRecorder(true);
+  } = useAudioRecorder({
+    defaultVADActive: true,
+    onSpeechEnd: () => {
+      console.log("Speech ended");
+    },
+    onSpeechStart: () => {
+      console.log("Speech started");
+    },
+  });
 
   const {
     isPartialActive,
     partialWavBlob,
     startPartialRecording,
     stopPartialRecording,
-  } = useGetPartialRecording(recordedChunks);
-
-  useEffect(() => {
-    if (isPartialActive) {
+  } = useGetPartialRecording({
+    recordedChunks,
+    onStart: () => {
+      console.log("Partial recording started");
       startVAD();
-    } else {
+    },
+    onEnd: (blob) => {
+      console.log("Partial recording ended", blob);
       stopVAD();
-    }
-  }, [isPartialActive]);
+    },
+  });
 
   return (
     <div>
       <h1>Speaking: {isSpeaking ? "Yes" : "No"} </h1>
       <button
         onClick={recording ? stopFullRecording : startFullRecording}
-        disabled={!onnxReady}
+        disabled={!ready}
       >
         {recording ? "Stop Recording" : "Start Recording"}
       </button>
